@@ -8,6 +8,6 @@ NEW_REF="${2:-}"
 
 if [ "$PREV_REF" != "$NEW_REF" ]
 then
-    git ls-files | grep '\.[ch]$' | ctags --recurse --c-kinds=+l -L-
+    git ls-files | ctags --languages=c --recurse --c-kinds=+l -L-
 fi
 
