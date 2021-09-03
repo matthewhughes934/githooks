@@ -34,20 +34,28 @@ my @JIRA_LABELS = qw(FOO BAR);
 # EDIT ME: Prefix for the ticket in the body
 my $TICKET_PREFIX = "Ticket: ";
 
-#$ARGV[2] is the commit SHA, unused here
-my $COMMIT_MSG_FILE = $ARGV[0];
-my $COMMIT_SOURCE   = $ARGV[1];
+sub main {
+    my ( $commit_msg_file, $commit_source, $commit_sha ) = @_;
 
-# invoked with --message/-m or -F/--file
-my $SOURCE_IS_MESSAGE = $COMMIT_SOURCE && $COMMIT_SOURCE eq 'message';
+    # Note: $commit_sha is unused
 
-# invoked with -c/--reuse-message or -C/--reedit-message or --ammed
-my $SOURCE_IS_COMMIT = $COMMIT_SOURCE && $COMMIT_SOURCE eq 'commit';
-my $IS_SUPPORTED_SOURCE =
-  !$COMMIT_SOURCE || $SOURCE_IS_MESSAGE || $SOURCE_IS_COMMIT;
+    my $branch_ticket = get_ticket_from_branch(@JIRA_LABELS) or return 0;
+    add_ticket_to_commit( $branch_ticket, $commit_source, $commit_msg_file );
+    return 0;
+}
 
 sub get_ticket_from_branch {
-    my $branch = qx/git rev-parse --abbrev-ref HEAD/;
+    my (@jira_labels) = @_;
+
+    my $get_branch_cmd = 'git rev-parse --abbrev-ref HEAD';
+    my $branch         = qx/$get_branch_cmd/;
+
+    my $return_code = $? >> 8;
+    if ( $return_code != 0 ) {
+        warn "`$get_branch_cmd` exited with $return_code";
+        return;
+    }
+
     chomp($branch);
 
     for my $label (@JIRA_LABELS) {
@@ -65,17 +73,18 @@ sub get_ticket_string {
 }
 
 sub add_ticket_to_commit {
-    my ($ticket) = @_;
+    my ( $ticket, $commit_source, $commit_msg_file ) = @_;
 
-    if ($IS_SUPPORTED_SOURCE) {
-        my $content = read_file_contents($COMMIT_MSG_FILE);
-        write_ticket_to_file( $COMMIT_MSG_FILE, $content, $ticket );
+    if ( is_source_supported($commit_source) ) {
+        my $content = read_file_contents($commit_msg_file);
+        write_ticket_to_file( $commit_source, $commit_msg_file, $content,
+            $ticket );
     }
     return;
 }
 
 sub write_ticket_to_file {
-    my ( $filename, $content, $ticket ) = @_;
+    my ( $commit_source, $filename, $content, $ticket ) = @_;
 
     my $ticket_string = get_ticket_string($ticket);
 
@@ -83,13 +92,13 @@ sub write_ticket_to_file {
     return if $content =~ /\Q$ticket_string\E/;
 
     my $out_content = q//;
-    if ( !$COMMIT_SOURCE ) {
+    if ( !$commit_source ) {
         $out_content = _content_for_new_commit( $content, $ticket_string );
     }
-    elsif ($SOURCE_IS_MESSAGE) {
+    elsif ( is_source_message($commit_source) ) {
         $out_content = _content_for_message( $content, $ticket_string );
     }
-    elsif ($SOURCE_IS_COMMIT) {
+    elsif ( is_source_commit($commit_source) ) {
         $out_content =
           _content_for_exisiting_commit( $content, $ticket_string );
     }
@@ -127,7 +136,7 @@ sub _content_for_exisiting_commit {
 sub read_file_contents {
     my ($filename) = @_;
 
-    open( my $in, '<:encoding(utf8)', $COMMIT_MSG_FILE )
+    open( my $in, '<:encoding(utf8)', $filename )
       or die 'Could not open commit message file';
     local $/ = undef;    # 'slurp mode'
     my $content = <$in>;
@@ -135,5 +144,27 @@ sub read_file_contents {
     return $content;
 }
 
-my $branch_ticket = get_ticket_from_branch() or exit 0;
-add_ticket_to_commit($branch_ticket);
+sub is_source_commit {
+    my ($commit_source) = @_;
+
+    # invoked with -c/--reuse-message or -C/--reedit-message or --ammed
+    return $commit_source && $commit_source eq 'commit';
+}
+
+sub is_source_message {
+    my ($commit_source) = @_;
+
+    # invoked with --message/-m or -F/--file
+    return $commit_source && $commit_source eq 'message';
+}
+
+sub is_source_supported {
+    my ($commit_source) = @_;
+
+    return
+         !$commit_source
+      || is_source_message($commit_source)
+      || is_source_commit($commit_source);
+}
+
+exit main(@ARGV);
