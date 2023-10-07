@@ -103,7 +103,7 @@ def _add_ticket_details(
     else:
         # commit not open with editor, just contains contents
         # append the ticket details
-        return commit_content + f"\n{ticket_string}\n"
+        return commit_content + f"\n\n{ticket_string}\n"
 
 
 def _get_ticket_from_branch(branch: str, labels: Iterable[str]) -> Optional[str]:
